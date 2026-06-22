@@ -1,0 +1,79 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 016e743..1d99306 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -12,14 +12,14 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall   -O3")
+ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
+ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
+ 
+-# Check C++11 or C++0x support
++# Check C++14 support (Ubuntu 22.04 / gcc-11 + Pangolin v0.8 require C++14)
+ include(CheckCXXCompilerFlag)
+-CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
++CHECK_CXX_COMPILER_FLAG("-std=c++14" COMPILER_SUPPORTS_CXX14)
+ CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
+-if(COMPILER_SUPPORTS_CXX11)
+-   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
++if(COMPILER_SUPPORTS_CXX14)
++   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+    add_definitions(-DCOMPILEDWITHC11)
+-   message(STATUS "Using flag -std=c++11.")
++   message(STATUS "Using flag -std=c++14.")
+ elseif(COMPILER_SUPPORTS_CXX0X)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+    add_definitions(-DCOMPILEDWITHC0X)
+diff --git a/Thirdparty/Sophus/CMakeLists.txt b/Thirdparty/Sophus/CMakeLists.txt
+index 933445b..d7fe003 100644
+--- a/Thirdparty/Sophus/CMakeLists.txt
++++ b/Thirdparty/Sophus/CMakeLists.txt
+@@ -10,7 +10,7 @@ if(NOT CMAKE_BUILD_TYPE)
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ 
+-set(CMAKE_CXX_STANDARD 11)
++set(CMAKE_CXX_STANDARD 14)
+ 
+ # Set compiler specific settings (FixMe: Should not cmake do this for us automatically?)
+ IF("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+@@ -20,7 +20,7 @@ IF("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+ ELSEIF("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+    SET(CMAKE_CXX_FLAGS_DEBUG  "-O0 -g")
+    SET(CMAKE_CXX_FLAGS_RELEASE "-O3")
+-   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wextra -std=c++11 -Wno-deprecated-declarations -ftemplate-backtrace-limit=0")
++   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -std=c++14 -Wno-deprecated-declarations -ftemplate-backtrace-limit=0")
+    SET(CMAKE_CXX_FLAGS_COVERAGE "${CMAKE_CXX_FLAGS_DEBUG} --coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
+    SET(CMAKE_EXE_LINKER_FLAGS_COVERAGE "${CMAKE_EXE_LINKER_FLAGS_DEBUG} --coverage")
+    SET(CMAKE_SHARED_LINKER_FLAGS_COVERAGE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} --coverage")
+diff --git a/src/Settings.cc b/src/Settings.cc
+index 93a50be..cbff7ca 100644
+--- a/src/Settings.cc
++++ b/src/Settings.cc
+@@ -559,8 +559,10 @@ namespace ORB_SLAM3 {
+                 output << "Kannala-Brandt";
+             }
+             output << "" << ": [";
+-            for(size_t i = 0; i < settings.originalCalib2_->size(); i++){
+-                output << " " << settings.originalCalib2_->getParameter(i);
++            if(settings.originalCalib2_ != nullptr){   // null for "Rectified" stereo (e.g. D435i)
++                for(size_t i = 0; i < settings.originalCalib2_->size(); i++){
++                    output << " " << settings.originalCalib2_->getParameter(i);
++                }
+             }
+             output << " ]" << endl;
+ 
+diff --git a/src/System.cc b/src/System.cc
+index 60d9c51..ed1889e 100644
+--- a/src/System.cc
++++ b/src/System.cc
+@@ -81,7 +81,10 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
+         mStrLoadAtlasFromFile = settings_->atlasLoadFile();
+         mStrSaveAtlasToFile = settings_->atlasSaveFile();
+ 
+-        cout << (*settings_) << endl;
++        // NOTE: operator<<(Settings) dereferences calibration pointers that are
++        // null for "Rectified" stereo (e.g. RealSense D435i) -> SIGSEGV.
++        // It is diagnostic-only, so skip it. See settings file for parameters.
++        cout << "Settings loaded from " << strSettingsFile << endl;
+     }
+     else{
+         settings_ = nullptr;
