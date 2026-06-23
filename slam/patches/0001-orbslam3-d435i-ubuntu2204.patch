@@ -44,6 +44,23 @@ index 933445b..d7fe003 100644
     SET(CMAKE_CXX_FLAGS_COVERAGE "${CMAKE_CXX_FLAGS_DEBUG} --coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
     SET(CMAKE_EXE_LINKER_FLAGS_COVERAGE "${CMAKE_EXE_LINKER_FLAGS_DEBUG} --coverage")
     SET(CMAKE_SHARED_LINKER_FLAGS_COVERAGE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} --coverage")
+diff --git a/src/Map.cc b/src/Map.cc
+index f1f8cd0..35b2c59 100644
+--- a/src/Map.cc
++++ b/src/Map.cc
+@@ -359,7 +359,11 @@ void Map::SetLastMapChange(int currentChangeId)
+ void Map::PreSave(std::set<GeometricCamera*> &spCams)
+ {
+     int nMPWithoutObs = 0;
+-    for(MapPoint* pMPi : mspMapPoints)
++    // Iterate a COPY: EraseObservation() below can drop a MapPoint's obs to <=2,
++    // triggering SetBadFlag()->Map::EraseMapPoint()->mspMapPoints.erase(), which
++    // would invalidate this iterator mid-loop (SIGSEGV in PreSave, common on IMU maps).
++    std::set<MapPoint*> mspMapPointsCopy = mspMapPoints;
++    for(MapPoint* pMPi : mspMapPointsCopy)
+     {
+         if(!pMPi || pMPi->isBad())
+             continue;
 diff --git a/src/Settings.cc b/src/Settings.cc
 index 93a50be..cbff7ca 100644
 --- a/src/Settings.cc
