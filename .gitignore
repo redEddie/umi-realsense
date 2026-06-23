@@ -15,6 +15,10 @@ outputs/
 /Pangolin/
 /install/
 
+# --- C++ build artifacts ---
+build/
+*.osa            # ORB-SLAM3 atlas maps (also matched above)
+
 # --- Python ---
 __pycache__/
 *.py[cod]
