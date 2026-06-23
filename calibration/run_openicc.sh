@@ -19,6 +19,10 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate openicc                      # py3.10 env; provides 'python' for sub-scripts
 export LD_LIBRARY_PATH="$RS/install/lib:${LD_LIBRARY_PATH:-}"
 
+# Drop stale corner/pose artifacts so corners are re-extracted on the full clip.
+rm -f "$DATASET"/cam/cam_corners.uson "$DATASET"/cam/cam_calib_*.json \
+      "$DATASET"/cam_imu/cam_imu_corners.uson "$DATASET"/cam_imu/pose_calib.calibdata 2>/dev/null || true
+
 cd "$OICC/python"
 python run_mynteye_calibration.py \
   --path_calib_dataset="$DATASET" \
@@ -29,6 +33,8 @@ python run_mynteye_calibration.py \
   --num_squares_x=10 \
   --num_squares_y=8 \
   --image_downsample_factor=1 \
+  --recompute_corners=1 \
+  --voxel_grid_size=0.02 \
   --verbose=1
 
 echo
