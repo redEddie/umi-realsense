@@ -104,6 +104,10 @@ def main():
     dets = pickle.load(open(args.detections, "rb"))
     traj = np.loadtxt(args.trajectory)  # ts tx ty tz qx qy qz qw
     t_traj = traj[:, 0]
+    # ORB-SLAM3 SaveTrajectoryEuRoC writes timestamps in nanoseconds (~1e18);
+    # detect_aruco stores seconds (~1e9). Align to seconds.
+    if np.median(t_traj) > 1e15:
+        t_traj = t_traj * 1e-9
 
     samples = []
     for d in dets:
