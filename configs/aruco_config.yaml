@@ -1,0 +1,32 @@
+# ArUco marker configuration (matches UMI: real-stanford/universal_manipulation_interface)
+aruco_dict:
+  predefined: DICT_4X4_50
+
+# marker id -> physical side length in meters
+marker_size_map:
+  default: 0.16
+  # gripper finger markers (gripper-width measurement)
+  0: 0.016
+  1: 0.016
+  6: 0.016
+  7: 0.016
+  # gripper cube markers
+  2: 0.06
+  3: 0.06
+  4: 0.06
+  5: 0.06
+  8: 0.06
+  9: 0.06
+  10: 0.06
+  11: 0.06
+  # large table / world markers (origin)
+  12: 0.16
+  13: 0.16     # <-- world ORIGIN tag (UMI default --tag_id 13)
+  14: 0.16
+  15: 0.16
+  16: 0.16
+  17: 0.16
+  18: 0.16
+  19: 0.16
+
+origin_tag_id: 13

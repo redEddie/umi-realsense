@@ -185,6 +185,17 @@ int main(int argc, char **argv) {
 
     SLAM.Shutdown();   // saves atlas if System.SaveAtlasToFile set in yaml
     if (!traj.empty()) {
+        // per-frame trajectory (needed for ArUco tag calibration: match tag
+        // detections to camera poses by frame timestamp). <traj>_full.txt
+        string full = traj;
+        size_t dot = full.rfind(".txt");
+        full = (dot != string::npos) ? full.substr(0, dot) + "_full.txt" : full + "_full";
+        try {
+            SLAM.SaveTrajectoryEuRoC(full);
+            cout << "Saved full (per-frame) trajectory -> " << full << endl;
+        } catch (const std::exception &e) {
+            cerr << "WARNING: full trajectory save failed (" << e.what() << ")." << endl;
+        }
         try {
             SLAM.SaveKeyFrameTrajectoryEuRoC(traj);
             cout << "Saved keyframe trajectory -> " << traj << endl;
