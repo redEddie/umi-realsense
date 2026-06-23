@@ -19,7 +19,15 @@ cmake -S "$RS/pyTheiaSfM" -B "$RS/pyTheiaSfM/build" -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_PREFIX_PATH="$PREFIX"
 cmake --build "$RS/pyTheiaSfM/build" -j"$NPROC" --target install
 
-echo "==> [3/3] OpenImuCameraCalibrator (build only)"
+echo "==> [3/3] OpenImuCameraCalibrator (apply our patch + build)"
+PATCH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patches/0001-openicc-fixes.patch"
+if [ -f "$PATCH" ]; then
+  if git -C "$RS/OpenImuCameraCalibrator" apply --check "$PATCH" 2>/dev/null; then
+    git -C "$RS/OpenImuCameraCalibrator" apply "$PATCH" && echo "    applied OpenICC patch"
+  else
+    echo "    OpenICC patch already applied or N/A (skipping)"
+  fi
+fi
 cmake -S "$RS/OpenImuCameraCalibrator" -B "$RS/OpenImuCameraCalibrator/build" \
       -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX"
 cmake --build "$RS/OpenImuCameraCalibrator/build" -j"$NPROC"
