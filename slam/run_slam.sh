@@ -20,16 +20,20 @@ VOCAB="$ORB/Vocabulary/ORBvoc.txt"
 DRIVER="$REPO/slam/offline_driver/build/stereo_inertial_db3"
 [ -x "$DRIVER" ] || { echo "driver not built: run slam/offline_driver/build.sh"; exit 1; }
 
-# Default to non-inertial STEREO: robust now and required for the D405 (no IMU).
-# IMU_STEREO is enabled with --imu once cam-IMU calibration (Phase 1) is done.
+# Camera: --cam d435i (default) or d405. D405 has no IMU -> always STEREO.
+CAM="d435i"; for a in "$@"; do case "$a" in --cam=*) CAM="${a#--cam=}";; esac; done
+# Default to non-inertial STEREO: robust, and required for the D405 (no IMU).
+# IMU_STEREO is enabled with --imu (d435i/d455 only, after cam-IMU calib).
 SENSOR="--stereo"; for a in "$@"; do [ "$a" = "--imu" ] && SENSOR=""; done
+[ "$CAM" = "d405" ] && SENSOR="--stereo"   # D405 has no IMU
 
 case "$MODE" in
-  mapping)  CFG="$REPO/slam/configs/d435i_mapping.yaml";          EXTRA="$SENSOR" ;;
-  localize) CFG="$REPO/slam/configs/d435i_localization.yaml";     EXTRA="--localize $SENSOR" ;;
-  odom)     CFG="$REPO/slam/configs/d435i_stereo_inertial.yaml";  EXTRA="$SENSOR" ;;
+  mapping)  CFG="$REPO/slam/configs/${CAM}_mapping.yaml";       EXTRA="$SENSOR" ;;
+  localize) CFG="$REPO/slam/configs/${CAM}_localization.yaml";  EXTRA="--localize $SENSOR" ;;
+  odom)     CFG="$REPO/slam/configs/${CAM}_stereo$([ "$CAM" = d435i ] && echo _inertial).yaml"; EXTRA="$SENSOR" ;;
   *) echo "mode must be mapping | localize | odom"; exit 1 ;;
 esac
+[ -f "$CFG" ] || { echo "config not found: $CFG"; exit 1; }
 
 mkdir -p "$REPO/data/maps"
 NAME="$(basename "$BAG" .db3)"
