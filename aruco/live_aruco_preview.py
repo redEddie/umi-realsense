@@ -91,8 +91,12 @@ def main():
             if not fr:
                 continue
             img = np.asanyarray(fr.get_data())
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if a.color else img
-            vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            if a.color:
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # detection needs grayscale
+                vis = img.copy()                              # but display the RGB frame
+            else:
+                gray = img
+                vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
             corners, ids, _ = detector.detectMarkers(gray)
             info = []
             if ids is not None:
