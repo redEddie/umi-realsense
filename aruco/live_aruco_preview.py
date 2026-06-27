@@ -29,7 +29,8 @@ def load_size_map(cfg_path):
     cfg = yaml.safe_load(open(cfg_path))
     sm = {int(k): float(v) for k, v in cfg["marker_size_map"].items() if k != "default"}
     grip = (cfg.get("gripper_left_finger_id"), cfg.get("gripper_right_finger_id"))
-    return cfg["aruco_dict"]["predefined"], sm, float(cfg["marker_size_map"].get("default", 0.16)), grip
+    offset = float(cfg.get("gripper_width_offset_m", 0.0))
+    return cfg["aruco_dict"]["predefined"], sm, float(cfg["marker_size_map"].get("default", 0.16)), grip, offset
 
 
 def marker_obj_points(size):
@@ -48,7 +49,7 @@ def main():
     if "DISPLAY" not in os.environ:
         os.environ["DISPLAY"] = ":1"
 
-    dict_name, size_map, default_size, (grip_l, grip_r) = load_size_map(a.config)
+    dict_name, size_map, default_size, (grip_l, grip_r), grip_offset = load_size_map(a.config)
     aruco_dict = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dict_name))
     detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters())
 
@@ -117,9 +118,10 @@ def main():
             # live gripper width = x-separation of left/right finger markers (camera frame)
             grip_w = None
             if grip_l in tvec_by_id and grip_r in tvec_by_id:
-                grip_w = float(tvec_by_id[grip_r][0] - tvec_by_id[grip_l][0])
+                raw = float(tvec_by_id[grip_r][0] - tvec_by_id[grip_l][0])
+                grip_w = raw - grip_offset                      # calibrated width
                 zl, zr = tvec_by_id[grip_l][2], tvec_by_id[grip_r][2]
-                cv2.putText(vis, f"GRIP WIDTH: {grip_w*100:+.1f} cm  (Lz {zl*100:.1f} Rz {zr*100:.1f})",
+                cv2.putText(vis, f"GRIP WIDTH: {grip_w*100:.1f} cm  (raw {raw*100:+.1f}, Lz {zl*100:.1f} Rz {zr*100:.1f})",
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2)
             if time.time() - last > 0.5:
                 last = time.time()

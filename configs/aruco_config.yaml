@@ -34,3 +34,6 @@ origin_tag_id: 13
 # gripper finger markers (8mm, on finger bases) for gripper-width measurement
 gripper_left_finger_id: 6
 gripper_right_finger_id: 7
+# actual_width = (right_x - left_x) - offset.  raw reads +1.0cm at full close,
+# so offset = 0.010 maps full-close -> 0. (parallel-jaw -> scale = 1.0)
+gripper_width_offset_m: 0.010
