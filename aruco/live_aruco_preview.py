@@ -28,7 +28,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def load_size_map(cfg_path):
     cfg = yaml.safe_load(open(cfg_path))
     sm = {int(k): float(v) for k, v in cfg["marker_size_map"].items() if k != "default"}
-    return cfg["aruco_dict"]["predefined"], sm, float(cfg["marker_size_map"].get("default", 0.16))
+    grip = (cfg.get("gripper_left_finger_id"), cfg.get("gripper_right_finger_id"))
+    return cfg["aruco_dict"]["predefined"], sm, float(cfg["marker_size_map"].get("default", 0.16)), grip
 
 
 def marker_obj_points(size):
@@ -47,7 +48,7 @@ def main():
     if "DISPLAY" not in os.environ:
         os.environ["DISPLAY"] = ":1"
 
-    dict_name, size_map, default_size = load_size_map(a.config)
+    dict_name, size_map, default_size, (grip_l, grip_r) = load_size_map(a.config)
     aruco_dict = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dict_name))
     detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters())
 
@@ -98,7 +99,7 @@ def main():
                 gray = img
                 vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
             corners, ids, _ = detector.detectMarkers(gray)
-            info = []
+            info = []; tvec_by_id = {}
             if ids is not None:
                 cv2.aruco.drawDetectedMarkers(vis, corners, ids)
                 for c, i in zip(corners, ids.flatten()):
@@ -108,13 +109,23 @@ def main():
                                                   flags=cv2.SOLVEPNP_IPPE_SQUARE)
                     d = float(np.linalg.norm(tvec)) if ok else -1
                     info.append((i, d)); seen_total[i] = seen_total.get(i, 0) + 1
+                    if ok:
+                        tvec_by_id[i] = tvec.squeeze()
                     ctr = c.reshape(-1, 2).mean(0).astype(int)
                     cv2.putText(vis, f"id{i} {d:.2f}m", tuple(ctr), cv2.FONT_HERSHEY_SIMPLEX,
                                 0.6, (0, 255, 0), 2)
+            # live gripper width = x-separation of left/right finger markers (camera frame)
+            grip_w = None
+            if grip_l in tvec_by_id and grip_r in tvec_by_id:
+                grip_w = float(tvec_by_id[grip_r][0] - tvec_by_id[grip_l][0])
+                zl, zr = tvec_by_id[grip_l][2], tvec_by_id[grip_r][2]
+                cv2.putText(vis, f"GRIP WIDTH: {grip_w*100:+.1f} cm  (Lz {zl*100:.1f} Rz {zr*100:.1f})",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2)
             if time.time() - last > 0.5:
                 last = time.time()
                 txt = "  ".join(f"id{i}:{d:.2f}m" for i, d in sorted(info)) or "(none)"
-                print(f"\rdetected: {txt}        ", end="", flush=True)
+                wtxt = f" | GRIP {grip_w*100:+.1f}cm" if grip_w is not None else ""
+                print(f"\rdetected: {txt}{wtxt}        ", end="", flush=True)
             if not a.no_window:
                 cv2.imshow("ArUco preview (q quit, s save)", vis)
                 k = cv2.waitKey(1) & 0xFF
