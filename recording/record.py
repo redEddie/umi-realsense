@@ -66,10 +66,14 @@ def find_profile_for_device(dev: rs.device) -> str | None:
     return None
 
 
-def build_config(prof: dict, serial: str, bag_path: str) -> rs.config:
+def build_config(prof: dict, serial: str, bag_path: str, preview: str = "none") -> rs.config:
     cfg = rs.config()
     cfg.enable_device(serial)
     streams = prof.get("streams", {})
+    # --preview color needs a color stream; add one if the profile lacks it
+    # (it will also be recorded into the .db3).
+    if preview == "color" and "color" not in streams:
+        cfg.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
     for sname, entries in streams.items():
         if entries is None:
             continue
@@ -125,6 +129,8 @@ def main() -> int:
     ap.add_argument("--tag", default="rec", help="filename tag, e.g. mapping/demo")
     ap.add_argument("--out", default=DEFAULT_OUT, help="output directory")
     ap.add_argument("--list", action="store_true", help="list devices and exit")
+    ap.add_argument("--preview", choices=["none", "ir", "color"], default="none",
+                    help="live window while recording (color also gets recorded)")
     args = ap.parse_args()
 
     devs = list_devices()
@@ -169,13 +175,19 @@ def main() -> int:
     bag_path = os.path.join(args.out, f"{pname}_{args.tag}_{stamp}.db3")
 
     pipe = rs.pipeline()
-    cfg = build_config(prof, serial, bag_path)
+    cfg = build_config(prof, serial, bag_path, args.preview)
+
+    preview = args.preview
+    if preview != "none":
+        import numpy as np, cv2
+        os.environ.setdefault("DISPLAY", ":1")   # show on physical desktop over SSH
+        win = f"record preview ({preview}) - q to stop"
 
     print(f"\nRecording -> {bag_path}")
     pipe_profile = pipe.start(cfg)
     # options must be applied on the running device
     apply_options(pipe_profile.get_device(), prof)
-    print("Recording... press Ctrl-C to stop.\n")
+    print(f"Recording... press Ctrl-C{' or q in window' if preview!='none' else ''} to stop.\n")
 
     stop = {"flag": False}
     signal.signal(signal.SIGINT, lambda *_: stop.update(flag=True))
@@ -185,17 +197,26 @@ def main() -> int:
     try:
         while not stop["flag"]:
             try:
-                pipe.wait_for_frames(2000)
+                frames = pipe.wait_for_frames(2000)
                 n += 1
             except RuntimeError:
                 # motion-only intervals / timeout — keep going
-                pass
+                continue
+            if preview != "none":
+                fr = frames.get_color_frame() if preview == "color" else frames.get_infrared_frame(1)
+                if fr:
+                    img = np.asanyarray(fr.get_data())
+                    cv2.imshow(win, img)
+                    if (cv2.waitKey(1) & 0xFF) == ord('q'):
+                        stop["flag"] = True
             if n % 30 == 0 and n:
                 el = time.time() - t0
                 print(f"\r  {el:6.1f}s  framesets={n}  size={human_size(bag_path)}",
                       end="", flush=True)
     finally:
         pipe.stop()
+        if preview != "none":
+            import cv2; cv2.destroyAllWindows()
         el = time.time() - t0
         print(f"\n\nStopped. duration={el:.1f}s  file={bag_path}  size={human_size(bag_path)}")
     return 0
