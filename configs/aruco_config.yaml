@@ -6,10 +6,10 @@ aruco_dict:
 marker_size_map:
   default: 0.16
   # gripper finger markers (gripper-width measurement)
-  0: 0.010
-  1: 0.010
-  6: 0.010
-  7: 0.010
+  0: 0.008
+  1: 0.008
+  6: 0.008
+  7: 0.008
   # gripper cube markers
   2: 0.06
   3: 0.06
@@ -30,3 +30,7 @@ marker_size_map:
   19: 0.16
 
 origin_tag_id: 13
+
+# gripper finger markers (8mm, on finger bases) for gripper-width measurement
+gripper_left_finger_id: 6
+gripper_right_finger_id: 7
