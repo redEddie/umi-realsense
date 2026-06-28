@@ -20,6 +20,9 @@
 #include <condition_variable>
 #include <thread>
 #include <vector>
+#include <array>
+#include <fstream>
+#include <iomanip>
 
 #include <opencv2/core/core.hpp>
 #include <librealsense2/rs.hpp>
@@ -155,6 +158,7 @@ int main(int argc, char **argv) {
 
     size_t processed = 0;
     int idle = 0;
+    std::vector<std::array<double, 8>> frame_poses;  // ts(s), tx,ty,tz, qx,qy,qz,qw (Twc, map frame)
     while (b_continue && !SLAM.isShutDown()) {
         Frame f;
         {
@@ -178,10 +182,32 @@ int main(int argc, char **argv) {
             cv::resize(f.left,  f.left,  cv::Size(f.left.cols * scale,  f.left.rows * scale));
             cv::resize(f.right, f.right, cv::Size(f.right.cols * scale, f.right.rows * scale));
         }
-        SLAM.TrackStereo(f.left, f.right, f.t, f.imu);
+        Sophus::SE3f Tcw = SLAM.TrackStereo(f.left, f.right, f.t, f.imu);
+        if (SLAM.GetTrackingState() == 2) {            // OK -> capture pose live
+            Sophus::SE3f Twc = Tcw.inverse();
+            Eigen::Vector3f tr = Twc.translation();
+            Eigen::Quaternionf qr = Twc.unit_quaternion();
+            frame_poses.push_back({f.t, tr.x(), tr.y(), tr.z(), qr.x(), qr.y(), qr.z(), qr.w()});
+        }
         if (++processed % 60 == 0) cout << "\r  processed " << processed << " frames" << flush;
     }
     cout << "\nFinished. frames processed = " << processed << endl;
+
+    // Robust per-frame trajectory captured live from TrackStereo: bypasses the
+    // SaveTrajectoryEuRoC multi-map empty-output bug, and in localization mode
+    // gives re-localized poses against the optimized map (lower drift than mapping).
+    if (!traj.empty()) {
+        string framesf = traj;
+        size_t d2 = framesf.rfind(".txt");
+        framesf = (d2 != string::npos) ? framesf.substr(0, d2) + "_frames.txt" : framesf + "_frames";
+        std::ofstream fo(framesf);
+        fo << "# ts tx ty tz qx qy qz qw (Twc, map frame, live capture, seconds)\n";
+        fo << std::setprecision(9) << std::fixed;
+        for (auto &p : frame_poses)
+            fo << p[0] << " " << p[1] << " " << p[2] << " " << p[3] << " "
+               << p[4] << " " << p[5] << " " << p[6] << " " << p[7] << "\n";
+        cout << "Saved live per-frame trajectory (" << frame_poses.size() << ") -> " << framesf << endl;
+    }
 
     SLAM.Shutdown();   // saves atlas if System.SaveAtlasToFile set in yaml
     if (!traj.empty()) {
