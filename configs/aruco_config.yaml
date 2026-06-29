@@ -21,7 +21,7 @@ marker_size_map:
   11: 0.06
   # large table / world markers (origin)
   12: 0.16
-  13: 0.16     # <-- world ORIGIN tag (UMI default --tag_id 13)
+  13: 0.10     # <-- world ORIGIN tag, reprinted at 100mm (was 160mm)
   14: 0.16
   15: 0.16
   16: 0.16

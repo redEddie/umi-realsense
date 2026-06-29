@@ -1,76 +1,66 @@
 # Why D405 gives lower SLAM-anchor accuracy than D435i
 
-Record of an experiment in this project (2026-06): we built the full UMI pipeline
-(map → world-anchor via ArUco → camera-IMU/TCP → gripper action) and compared the
+Record of an experiment in this project (2026-06). We built the full UMI pipeline
+(map → world-anchor via ArUco → camera/TCP → gripper action) and compared the
 **world-anchor precision** (`calibrate_slam_tag` translation-spread of the origin
-tag, lower = better) between the two cameras.
+tag id 13; lower = better) across cameras and conditions.
 
-## Result
+## Results
 
-| Camera | Stereo baseline | IMU | Map / tracking | **Anchor spread (median)** |
-|---|---|---|---|---|
-| **D435i** | 50.15 mm | yes | single map, 0 track-loss | **0.38 cm** |
-| **D405** (origin tag ~0.7 m) | 18.19 mm | **no** | single map, 0 track-loss | **7.1 cm** |
-| **D405** (origin tag ~0.4 m, "close") | 18.19 mm | **no** | single map, 0 track-loss | **11.9 cm** (worse) |
-| **D405** localize (drift-removal attempt) | — | — | re-localization fails | **only 2 tracked frames** |
+| Camera | baseline | IMU | gripper in view | origin tag | mode | **anchor spread (median)** |
+|---|---|---|---|---|---|---|
+| D435i | 50 mm | yes | **no** (handheld) | 160 mm | stereo | 0.38 cm |
+| D405  | 18 mm | no  | yes | 160 mm @0.7 m | stereo | 7.1 cm |
+| D405  | 18 mm | no  | yes | 160 mm @0.4 m | stereo | 11.9 cm |
+| D405  | 18 mm | no  | yes | **100 mm** | stereo | 5.5 cm |
+| **D435i** | 50 mm | yes | **yes** | **100 mm** | stereo | **0.94 cm** |
 
-(baselines/IMU from `calibration/factory_calib_*.json`; spreads from `aruco/calibrate_slam_tag.py`.)
+The last two rows are the **fair, apples-to-apples comparison** (both with the gripper
+mounted, same 100 mm marker, same STEREO mode): **D435i 0.94 cm vs D405 5.5 cm (~6x)**.
+Tracking was robust on all (single map, no track-loss) — the difference is **metric
+pose accuracy**, not tracking stability.
 
-Tracking was *robust* on both (single map, no track-loss) — the difference is in
-**metric pose accuracy**, not tracking stability.
+What each variable contributed:
+- **Camera (D405→D435i): the dominant factor** (5.5 → 0.94 cm, same conditions).
+- **Gripper occlusion: minor** (D435i 0.38 gripper-free → 0.94 with gripper, +~0.5 cm).
+  A smaller marker (160→100 mm) helped D405 (7→5.5 cm) by reducing occlusion, but did
+  not close the camera gap.
+
+## Root cause — it is the (short baseline → short usable stereo-depth range), not "baseline" alone
+
+We run **STEREO** (ORB-SLAM3 triangulates from the IR pair) — **not RGB-D** (the depth
+map is unused). The mechanism:
+
+```
+short baseline -> short range over which stereo depth is reliable.
+ORB-SLAM3 treats a feature as having valid (metric) depth only within
+   Stereo.ThDepth (=40) x baseline:
+     D405 : 0.0182 m x 40 = 0.73 m
+     D435i: 0.0502 m x 40 = 2.01 m
+At a typical mapping distance (~0.5 m and beyond) many features on D405 fall near/
+past 0.73 m -> treated as monocular (no metric depth) -> camera-pose scale is poorly
+constrained -> drift/scale error -> the 5-12 cm anchor spread.
++ D405 has NO IMU -> no inertial constraint to damp that drift.
+```
+
+So "short baseline" is only the *starting point*; the operative cause is **the fraction
+of scene features that lack reliable stereo depth** at the working distance. (Switching
+to RGB-D would not save D405: its depth sensor is itself a close-range device, unreliable
+past ~0.5 m for this kind of scene.)
+
+## Takeaway / decision
+
+- **Environment-SLAM 6DoF pose tracking needs a long-enough usable stereo-depth range
+  (i.e. enough baseline) + IMU.** Use **D435i / D455** for the SLAM anchor.
+- **D405's strength is close-range (7-50 cm) depth + RGB-stereo observation**, not
+  wide-area metric SLAM.
+- **Decision: D435i is the SLAM/anchor camera** (0.94 cm with the gripper; IMU still
+  available to improve further). The pipeline is camera-agnostic (`--cam d405|d435i`);
+  only accuracy differs.
 
 ## Sample footage
-Short clips (~6 s, 2x downscaled) from the actual recordings:
-- D405 (color): [`clips/d405_sample.mp4`](clips/d405_sample.mp4) — close-range view,
-  the origin marker fills much of the frame; relatively little far background.
-- D435i (left IR): [`clips/d435i_sample.mp4`](clips/d435i_sample.mp4) — wider scene
-  context with more distant background structure.
-
-## Why D405 is less accurate
-
-1. **Short stereo baseline (18 mm vs 50 mm).** Stereo metric accuracy scales with
-   baseline. At the same distance D405's disparity is ~2.8x smaller, so triangulated
-   depth (hence camera-pose scale) is noisier → the trajectory carries scale/drift
-   error that shows up as the 7–12 cm anchor spread.
-
-2. **No IMU.** D435i has a BMI055; even when we run STEREO-only, having the option of
-   inertial constraints (and generally a camera designed for VIO) matters. D405 has no
-   motion module at all → no inertial drift correction is possible.
-
-3. **Close range hurt, not helped (counter-intuitive).** Moving the marker closer
-   (0.7 m → 0.4 m) made it *worse* (7.1 → 11.9 cm). At close range each frame sees a
-   small patch, so far-apart keyframes share few common landmarks → weak global
-   constraints → more accumulated drift. (Marker corner precision improved, but the
-   dominant error is the SLAM trajectory, not the tag pose.)
-
-4. **Re-localization (the usual drift fix) doesn't hold on D405.** UMI computes the
-   anchor from a trajectory re-localized against the globally-optimized map (lower
-   drift than the online mapping trajectory). On D405 re-localization barely tracked
-   (2 OK frames) — narrow context + no IMU make relocalization fragile.
-
-## ⚠️ Caveat: the comparison is NOT apples-to-apples (confound)
-
-The D435i clip was recorded **without the gripper rig** (free/handheld → wide,
-unobstructed background), while the D405 clips were **with the gripper mounted**
-(the gripper occludes part of the FOV and adds rigid, camera-fixed features that
-violate SLAM's static-world assumption). So part of D435i's advantage here may be
-the cleaner view, not only baseline/IMU.
-
-What is *still* camera-intrinsic (independent of the gripper): the **2.8x baseline
-difference and the absence of an IMU on D405** — these fundamentally favour D435i.
-Expected reality: a fair re-test (D435i **with** the gripper) should narrow the gap
-but D435i should still win on metric accuracy.
-
-**Pending fair re-test:** mount D435i in the same rig position as D405, record a
-mapping clip with the gripper + origin marker in view (same conditions), and compare
-the anchor spread. If the gripper degrades it, **mask the gripper region** from the
-SLAM input (as UMI does) rather than shrinking markers.
-
-## Takeaway / recommendation
-
-- **Environment-SLAM-based 6DoF pose tracking needs baseline + IMU.** Use **D435i or
-  D455** for the pose/anchor (D435i measured 0.38 cm here).
-- **D405's strength is close-range depth + RGB-stereo observation**, not wide-area
-  metric SLAM. Use it for close observation if needed, not for the SLAM anchor.
-- The pipeline itself is camera-agnostic (`--cam d405|d435i`); only the *accuracy*
-  differs. We therefore switched the SLAM/anchor camera back to D435i.
+~6 s clips (2x downscaled) from the recordings:
+- D405 (color): [`clips/d405_sample.mp4`](clips/d405_sample.mp4) — close-range, marker
+  fills much of the frame, little far background.
+- D435i (left IR): [`clips/d435i_sample.mp4`](clips/d435i_sample.mp4) — wider context
+  with distant background structure.
