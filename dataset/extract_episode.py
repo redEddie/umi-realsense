@@ -89,7 +89,10 @@ def main():
         j = int(np.argmin(np.abs(det_t - ts_s[i])))
         w = det_w[j] if abs(det_t[j] - ts_s[i]) < 0.05 else None
         if w is not None: n_w += 1
-        rows.append([int(ts[i]), *p, *q, w if w is not None else np.nan])
+        # store timestamp as nanoseconds (int seconds truncated sub-second info,
+        # collapsing dt to 0 within the same second -> breaks velocity/resampling).
+        ts_ns = int(round(ts_s[i] * 1e9))
+        rows.append([ts_ns, *p, *q, w if w is not None else np.nan])
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     hdr = "ts_ns tx ty tz qx qy qz qw gripper_width_m  (pose in WORLD frame)"
