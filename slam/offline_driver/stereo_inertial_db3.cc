@@ -24,9 +24,11 @@
 #include <fstream>
 #include <iomanip>
 
+#include <set>
 #include <opencv2/core/core.hpp>
 #include <librealsense2/rs.hpp>
 #include <System.h>
+#include <MapPoint.h>
 
 using namespace std;
 
@@ -159,6 +161,7 @@ int main(int argc, char **argv) {
     size_t processed = 0;
     int idle = 0;
     std::vector<std::array<double, 8>> frame_poses;  // ts(s), tx,ty,tz, qx,qy,qz,qw (Twc, map frame)
+    std::set<ORB_SLAM3::MapPoint*> seen_mps;          // accumulate tracked map points (for density viz)
     while (b_continue && !SLAM.isShutDown()) {
         Frame f;
         {
@@ -188,6 +191,8 @@ int main(int argc, char **argv) {
             Eigen::Vector3f tr = Twc.translation();
             Eigen::Quaternionf qr = Twc.unit_quaternion();
             frame_poses.push_back({f.t, tr.x(), tr.y(), tr.z(), qr.x(), qr.y(), qr.z(), qr.w()});
+            for (auto *mp : SLAM.GetTrackedMapPoints())
+                if (mp && !mp->isBad()) seen_mps.insert(mp);
         }
         if (++processed % 60 == 0) cout << "\r  processed " << processed << " frames" << flush;
     }
@@ -207,6 +212,23 @@ int main(int argc, char **argv) {
             fo << p[0] << " " << p[1] << " " << p[2] << " " << p[3] << " "
                << p[4] << " " << p[5] << " " << p[6] << " " << p[7] << "\n";
         cout << "Saved live per-frame trajectory (" << frame_poses.size() << ") -> " << framesf << endl;
+
+        // Map points actually tracked during the run (world/map frame): a quick
+        // proxy for map density. Read before Shutdown (atlas still alive).
+        string mpf = traj;
+        size_t d3 = mpf.rfind(".txt");
+        mpf = (d3 != string::npos) ? mpf.substr(0, d3) + "_mappoints.txt" : mpf + "_mappoints";
+        std::ofstream mo(mpf);
+        mo << "# x y z (map frame) -- tracked map points\n";
+        mo << std::setprecision(6) << std::fixed;
+        size_t nmp = 0;
+        for (auto *mp : seen_mps) {
+            if (!mp || mp->isBad()) continue;
+            Eigen::Vector3f p = mp->GetWorldPos();
+            mo << p.x() << " " << p.y() << " " << p.z() << "\n";
+            ++nmp;
+        }
+        cout << "Saved tracked map points (" << nmp << ") -> " << mpf << endl;
     }
 
     SLAM.Shutdown();   // saves atlas if System.SaveAtlasToFile set in yaml
