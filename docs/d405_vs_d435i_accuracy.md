@@ -48,6 +48,24 @@ Short clips (~6 s, 2x downscaled) from the actual recordings:
    drift than the online mapping trajectory). On D405 re-localization barely tracked
    (2 OK frames) — narrow context + no IMU make relocalization fragile.
 
+## ⚠️ Caveat: the comparison is NOT apples-to-apples (confound)
+
+The D435i clip was recorded **without the gripper rig** (free/handheld → wide,
+unobstructed background), while the D405 clips were **with the gripper mounted**
+(the gripper occludes part of the FOV and adds rigid, camera-fixed features that
+violate SLAM's static-world assumption). So part of D435i's advantage here may be
+the cleaner view, not only baseline/IMU.
+
+What is *still* camera-intrinsic (independent of the gripper): the **2.8x baseline
+difference and the absence of an IMU on D405** — these fundamentally favour D435i.
+Expected reality: a fair re-test (D435i **with** the gripper) should narrow the gap
+but D435i should still win on metric accuracy.
+
+**Pending fair re-test:** mount D435i in the same rig position as D405, record a
+mapping clip with the gripper + origin marker in view (same conditions), and compare
+the anchor spread. If the gripper degrades it, **mask the gripper region** from the
+SLAM input (as UMI does) rather than shrinking markers.
+
 ## Takeaway / recommendation
 
 - **Environment-SLAM-based 6DoF pose tracking needs baseline + IMU.** Use **D435i or
